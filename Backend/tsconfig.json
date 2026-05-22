@@ -1,0 +1,20 @@
+{
+    "compilerOptions": {
+        "module": "CommonJS",
+        "esModuleInterop": true,
+        "target": "ES6",
+        "sourceMap": true,
+        "skipLibCheck": true,
+        "outDir": "./dist",
+        "rootDir": "./src",
+        "typeRoots": [
+            "./node_modules/@types",
+            "./src/types"
+        ],
+        "strict": true,
+    },
+    "include": [
+        "src/**/*.ts", // tất cả code
+        "src/types/global.d.ts" // file global
+    ]
+}
