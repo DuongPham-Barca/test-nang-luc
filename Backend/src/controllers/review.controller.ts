@@ -1,63 +1,128 @@
-import { Request, Response } from "express";
-import { db } from "../config/firebase";
+import { Request, Response } from 'express'
+import { fetchGooglePlaceReviews } from '../services/gg.service'
+import { db } from '../config/firebase'
 
 
-const seedReviews = async (req: Request, res: Response) => {
+
+export const fetchReviews = async (
+    req: Request,
+    res: Response
+) => {
     try {
-        const reviews = [
-            {
-                authorName: 'John Smith',
-                rating: 5,
-                reviewText:
-                    'Amazing hotel and very friendly staff.',
+        const { placeId } = req.body
 
-                status: 'pending',
-
-                createdAt: new Date(),
-            },
-
-            {
-                authorName: 'Sarah Lee',
-                rating: 3,
-                reviewText:
-                    'Room was clean but check-in was slow.',
-
-                status: 'pending',
-
-                createdAt: new Date(),
-            },
-
-            {
-                authorName: 'Michael',
-                rating: 2,
-                reviewText:
-                    'Wifi connection was unstable during my stay.',
-
-                status: 'pending',
-
-                createdAt: new Date(),
-            },
-        ]
-
-        for (const review of reviews) {
-            await db.collection("reviews").add(review);
+        if (!placeId) {
+            return res.status(400).json({
+                success: false,
+                message: 'placeId is required',
+            })
         }
 
-        return res.status(200).json({ success: true, message: "Reviews added successfully" });
+        const reviews = await fetchGooglePlaceReviews(placeId)
+
+        if (reviews.length === 0) {
+            return res.json({
+                success: true,
+                count: 0,
+                reviews: [],
+            })
+        }
+
+        const batch = db.batch()
+
+        reviews.forEach((review) => {
+            const ref = db.collection('reviews').doc()
+
+            batch.set(ref, review)
+        })
+
+        await batch.commit()
+
+        return res.json({
+            success: true,
+            count: reviews.length,
+            reviews,
+        })
     } catch (error) {
-        res.status(500).json({ success: false, error: "Failed to fetch reviews" });
+        console.error('Fetch Google reviews error:', error)
+
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch Google reviews',
+        })
     }
 }
 
-const getReviews = async (req: Request, res: Response) => {
+export const getReviews = async (
+    req: Request,
+    res: Response
+) => {
     try {
-        const snapshot = await db.collection("reviews").orderBy("createdAt", "desc").get();
-        const reviews = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const snapshot = await db
+            .collection('reviews')
+            .orderBy('createdAt', 'desc')
+            .get()
 
-        return res.status(200).json({ success: true, reviews });
+        const reviews = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+        }))
+
+        return res.json(reviews)
     } catch (error) {
-        res.status(500).json({ success: false, error: "Failed to fetch reviews" });
+        console.error(error)
+
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to get reviews',
+        })
     }
 }
 
-export { getReviews, seedReviews };
+export const approveReview = async (req: Request, res: Response) => {
+    try {
+        const { reviewId, tone, replyText } = req.body
+
+        if (!reviewId || !tone || !replyText) {
+            return res.status(400).json({
+                success: false,
+                message: 'reviewId, tone and replyText are required',
+            })
+        }
+
+        await db.collection('reviews').doc(reviewId).update({
+            status: 'resolved',
+            approvedTone: tone,
+            approvedReply: replyText,
+            approvedAt: new Date(),
+        })
+
+        const snapshot = await db
+            .collection('ai_replies')
+            .where('reviewId', '==', reviewId)
+            .where('tone', '==', tone)
+            .get()
+
+        const batch = db.batch()
+
+        snapshot.docs.forEach((doc) => {
+            batch.update(doc.ref, {
+                approved: true,
+            })
+        })
+
+        await batch.commit()
+
+        return res.json({
+            success: true,
+            message: 'Review approved successfully',
+        })
+    } catch (error) {
+        console.error('Approve review error:', error)
+
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to approve review',
+        })
+    }
+}

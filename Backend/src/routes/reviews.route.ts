@@ -1,9 +1,11 @@
-import { Router } from "express";
-import { getReviews, seedReviews } from "../controllers/review.controller";
+import { Router } from 'express'
+import { approveReview, fetchReviews, getReviews } from '../controllers/review.controller'
 
-const reviewRouter = Router();
 
-reviewRouter.get("/", getReviews)
-reviewRouter.post("/seed", seedReviews)
+const router = Router()
 
-export default reviewRouter;
+router.post('/fetch', fetchReviews)
+router.get('/', getReviews)
+router.post('/approve', approveReview)
+
+export default router
