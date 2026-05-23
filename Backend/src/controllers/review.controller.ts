@@ -18,7 +18,16 @@ export const fetchReviews = async (
             })
         }
 
-        const reviews = await fetchGooglePlaceReviews(placeId)
+        let reviews = await fetchGooglePlaceReviews(placeId)
+
+        reviews = reviews
+            .sort((a, b) => {
+                const timeA = a.reviewTime ? new Date(a.reviewTime).getTime() : 0
+                const timeB = b.reviewTime ? new Date(b.reviewTime).getTime() : 0
+
+                return timeB - timeA
+            })
+            .slice(0, 5)
 
         if (reviews.length === 0) {
             return res.json({
@@ -61,6 +70,7 @@ export const getReviews = async (
         const snapshot = await db
             .collection('reviews')
             .orderBy('createdAt', 'desc')
+            .limit(5)
             .get()
 
         const reviews = snapshot.docs.map((doc) => ({
