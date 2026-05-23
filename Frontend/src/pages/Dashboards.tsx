@@ -11,6 +11,7 @@ const Dashboard = () => {
         reviews,
         selectedReview,
         loading,
+        placeError,
         loadReviews,
         importGoogleReviews,
         setSelectedReview,
@@ -22,6 +23,7 @@ const Dashboard = () => {
                 <PlaceIdForm
                     placeId={placeId}
                     loading={loading}
+                    error={placeError}
                     onPlaceIdChange={setPlaceId}
                     onSubmit={() => void importGoogleReviews(placeId)}
                 />

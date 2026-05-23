@@ -1,4 +1,22 @@
 import axios from 'axios'
+
+export interface GooglePlaceError extends Error {
+    status?: number
+    code?: string
+}
+
+const createGooglePlaceError = (
+    message: string,
+    status?: number,
+    code?: string,
+) => {
+    const error = new Error(message) as GooglePlaceError
+    error.status = status
+    error.code = code
+
+    return error
+}
+
 interface GoogleReview {
     name?: string
     relativePublishTimeDescription?: string
@@ -24,21 +42,36 @@ export const fetchGooglePlaceReviews = async (placeId: string) => {
 
     const url = `https://places.googleapis.com/v1/places/${placeId}`
 
-    const response = await axios.get(url, {
-        headers: {
-            'X-Goog-Api-Key': apiKey,
+    let response
 
-            'X-Goog-FieldMask':
-                'id,displayName,rating,reviews',
+    try {
+        response = await axios.get(url, {
+            headers: {
+                'X-Goog-Api-Key': apiKey,
 
-            'Accept-Language': 'vi',
-        },
+                'X-Goog-FieldMask':
+                    'id,displayName,rating,reviews',
 
-        params: {
-            languageCode: 'vi',
-            regionCode: 'VN',
-        },
-    })
+                'Accept-Language': 'vi',
+            },
+
+            params: {
+                languageCode: 'vi',
+                regionCode: 'VN',
+            },
+        })
+    } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 404) {
+            throw createGooglePlaceError(
+                'Place ID not found',
+                404,
+                'PLACE_NOT_FOUND',
+            )
+        }
+
+        throw error
+    }
+
     const place = response.data
 
     const reviews = (place.reviews || []) as GoogleReview[]

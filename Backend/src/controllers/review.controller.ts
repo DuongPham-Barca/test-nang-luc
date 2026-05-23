@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import { fetchGooglePlaceReviews } from '../services/gg.service'
+import type { GooglePlaceError } from '../services/gg.service'
 import { db } from '../config/firebase'
 
 
@@ -54,6 +55,19 @@ export const fetchReviews = async (
         })
     } catch (error) {
         console.error('Fetch Google reviews error:', error)
+
+        const googlePlaceError = error as GooglePlaceError
+
+        if (
+            googlePlaceError.status === 404 ||
+            googlePlaceError.code === 'PLACE_NOT_FOUND'
+        ) {
+            return res.status(404).json({
+                success: false,
+                code: 'PLACE_NOT_FOUND',
+                message: 'Không tìm thấy Place ID',
+            })
+        }
 
         return res.status(500).json({
             success: false,
