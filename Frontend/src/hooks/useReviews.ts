@@ -49,8 +49,23 @@ export const useReviews = () => {
     )
 
     useEffect(() => {
-        void loadReviews()
-    }, [loadReviews])
+        let active = true
+
+        fetchReviews().then((data) => {
+            if (!active) return
+
+            setReviews(data)
+            setSelectedReview((current) => {
+                if (!current) return data[0] || null
+
+                return data.find((review) => review.id === current.id) || data[0] || null
+            })
+        })
+
+        return () => {
+            active = false
+        }
+    }, [])
 
     return {
         reviews,

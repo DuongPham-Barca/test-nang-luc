@@ -9,6 +9,14 @@ export interface SelectedReply {
 
 type LoadingMode = 'generate' | 'regenerate' | null
 
+interface CachedAIReplyState {
+    replies: AIReplies
+    selectedReply: SelectedReply
+}
+
+const replyCache = new Map<string, CachedAIReplyState>()
+const pendingRequests = new Map<string, Promise<AIReplies>>()
+
 const getAIErrorMessage = (error: unknown) => {
     const apiError = error as {
         response?: {
@@ -28,8 +36,13 @@ const getAIErrorMessage = (error: unknown) => {
 }
 
 export const useAIReplies = (reviewId: string) => {
-    const [replies, setReplies] = useState<AIReplies | null>(null)
-    const [selectedReply, setSelectedReply] = useState<SelectedReply | null>(null)
+    const cachedState = replyCache.get(reviewId)
+    const [replies, setReplies] = useState<AIReplies | null>(
+        cachedState?.replies ?? null,
+    )
+    const [selectedReply, setSelectedReplyState] = useState<SelectedReply | null>(
+        cachedState?.selectedReply ?? null,
+    )
     const [error, setError] = useState('')
     const [loadingMode, setLoadingMode] = useState<LoadingMode>(null)
     const activeRequest = useRef<AbortController | null>(null)
@@ -38,8 +51,34 @@ export const useAIReplies = (reviewId: string) => {
     const generating = loadingMode === 'generate'
     const regenerating = loadingMode === 'regenerate'
 
+    const saveRepliesToState = (nextReplies: AIReplies) => {
+        const firstTone = Object.keys(nextReplies)[0] as keyof AIReplies
+        const nextSelectedReply = {
+            tone: firstTone,
+            text: nextReplies[firstTone],
+        }
+
+        replyCache.set(reviewId, {
+            replies: nextReplies,
+            selectedReply: nextSelectedReply,
+        })
+        setReplies(nextReplies)
+        setSelectedReplyState(nextSelectedReply)
+    }
+
+    const setSelectedReply = (reply: SelectedReply) => {
+        setSelectedReplyState(reply)
+
+        if (!replies) return
+
+        replyCache.set(reviewId, {
+            replies,
+            selectedReply: reply,
+        })
+    }
+
     const generateReplies = async (force = false) => {
-        activeRequest.current?.abort()
+        if (activeRequest.current) return
 
         const controller = new AbortController()
         activeRequest.current = controller
@@ -48,26 +87,29 @@ export const useAIReplies = (reviewId: string) => {
         setError('')
 
         if (force) {
+            replyCache.delete(reviewId)
             setReplies(null)
-            setSelectedReply(null)
+            setSelectedReplyState(null)
         }
 
         try {
-            const data = await generateAIReplies(reviewId, {
-                force,
-                signal: controller.signal,
-            })
+            const pendingKey = force ? `${reviewId}:force` : reviewId
+            let request = pendingRequests.get(pendingKey)
+
+            if (!request) {
+                request = generateAIReplies(reviewId, {
+                    force,
+                    signal: controller.signal,
+                }).then((data) => data.replies)
+
+                pendingRequests.set(pendingKey, request)
+            }
+
+            const nextReplies = await request
 
             if (controller.signal.aborted) return
 
-            setReplies(data.replies)
-
-            const firstTone = Object.keys(data.replies)[0] as keyof AIReplies
-
-            setSelectedReply({
-                tone: firstTone,
-                text: data.replies[firstTone],
-            })
+            saveRepliesToState(nextReplies)
         } catch (error: unknown) {
             if (!controller.signal.aborted) {
                 console.error(error)
@@ -78,6 +120,8 @@ export const useAIReplies = (reviewId: string) => {
                 activeRequest.current = null
                 setLoadingMode(null)
             }
+
+            pendingRequests.delete(force ? `${reviewId}:force` : reviewId)
         }
     }
 
